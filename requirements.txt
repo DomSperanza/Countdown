@@ -1,0 +1,4 @@
+dash-design-kit==1.6.3
+dash==2.7.1
+dash-bootstrap-components==1.0.0
+plotly == 5.0.0
