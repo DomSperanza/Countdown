@@ -11,10 +11,19 @@ quit_date = datetime.datetime(2023, 11, 22, 15, 0, 0)
 
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 
+default_quit_date = datetime.datetime(2023, 11, 22, 0, 0, 0)
+
 app.layout = dbc.Container([
     dbc.Row([
         dbc.Col([
             html.H1("Countdown to New Chapter", style={"color": "darkred", "fontSize": "48px"}),
+            dcc.DatePickerSingle(
+                id="quit-date-picker",
+                date=default_quit_date.date(),
+                min_date_allowed=datetime.datetime.now().date(),
+                max_date_allowed=datetime.date(2024, 12, 31),
+                display_format="YYYY-MM-DD"
+            ),
             dcc.Tabs(id="tabs", value="tab-1", children=[
                 dcc.Tab(label="Total Time", value="tab-1"),
                 dcc.Tab(label="Work Week Hours", value="tab-2")
@@ -46,7 +55,8 @@ app.layout = dbc.Container([
 
             html.Button("Submit Vacation Dates", id="submit-vacation", n_clicks=0),
             dcc.Interval(id="interval", interval=1000, n_intervals=0),
-            html.Div(id="vacation-storage", style={"display": "none"})
+            html.Div(id="vacation-storage", style={"display": "none"}),
+            html.Div(id="quit-date-storage", style={"display": "none"})
         ], style={"textAlign": "center"})
     ], style={"height": "100vh", "alignItems": "center", "justifyContent": "center"})
 ], fluid=True)
@@ -61,7 +71,7 @@ app.layout = dbc.Container([
     Input("clear-vacations", "n_clicks"),
     State("vacation-picker", "start_date"),
     State("vacation-picker", "end_date"),
-    State("vacation-container", "children"),
+    State("vacation-container", "children"),  
 )
 def update_vacations(add_n_clicks, clear_n_clicks, start_date, end_date, current_vacations):
     ctx = dash.callback_context
@@ -102,6 +112,19 @@ def store_vacation_dates(n_clicks, vacations):
 
 #######################
 
+#######################
+@app.callback(
+    Output("quit-date-storage", "children"),
+    Input("quit-date-picker", "date")
+)
+def update_quit_date(date):
+    if date:
+        quit_date_user = datetime.datetime.strptime(date, "%Y-%m-%d")
+        quit_date_user = quit_date_user.replace(hour=0, minute=0, second=0)
+        return json.dumps(quit_date_user.timestamp())
+    raise PreventUpdate
+
+######################
 
 
 #######################
@@ -110,9 +133,12 @@ def store_vacation_dates(n_clicks, vacations):
     Input("interval", "n_intervals"),
     Input("tabs", "value"),
     Input("time-format", "value"),
+    Input("quit-date-picker", "date"),  # Add this input
     Input("vacation-storage", "children")
 )
-def update_countdown(_, selected_tab, time_format, vacation_dates):
+def update_countdown(_, selected_tab, time_format, quit_date_user, vacation_dates):
+    quit_date = datetime.datetime.strptime(quit_date_user, "%Y-%m-%d")
+    quit_date = quit_date.replace(hour=0, minute=0, second=0)
     remaining_time = quit_date - datetime.datetime.now()
     days = remaining_time.days
     hours, remainder = divmod(remaining_time.seconds, 3600)
@@ -128,9 +154,14 @@ def update_countdown(_, selected_tab, time_format, vacation_dates):
     else:
         vacation_work_week_days = 0
 
+    #This is not working corretly. This is displaying the wrong information and 
+    # is not updating in realtime. 
     work_week_days = remaining_time.days // 7 * 5 + min(remaining_time.days % 7, 5) - vacation_work_week_days  # Adjust work week days
-    work_week_hours = work_week_days * 8  # Assumes 8 hours per work day
+    work_week_hours,work_week_remainder = divmod(work_week_days * 8,3600) # Assumes 8 hours per work day
+    work_week_minutes, work_week_seconds = divmod(work_week_remainder,60)
+    ########
 
+    #Total time remaining formatting
     if time_format == "dhms":
         time_display = f"{days} days, {hours} hours, {minutes} minutes, {seconds} seconds"
     elif time_format == "hours":
@@ -140,23 +171,23 @@ def update_countdown(_, selected_tab, time_format, vacation_dates):
     elif time_format == "seconds":
         time_display = f"{days * 24 * 60 * 60 + hours * 60 * 60 + minutes * 60 + seconds} seconds"
 
+    #work time remaining formatting
+    if time_format == "dhms":
+        work_week_hours_display = f"{work_week_days} days, {hours} hours,{minutes} minutes, {seconds} seconds"
+    elif time_format == "hours":
+        work_week_hours_display = f"{work_week_hours} hours"
+    elif time_format == "minutes":
+        work_week_hours_display = f"{work_week_minutes} minutes"
+    elif time_format == "seconds":
+        work_week_hours_display = f"{work_week_seconds} seconds"
+
+    #Gets the tab selected information
     if selected_tab == "tab-1":
         content = html.Div([
             html.H2("Time Remaining", style={"color": "darkred", "fontSize": "36px"}),
             html.P(time_display, style={"fontSize": "24px"}),
         ])
     elif selected_tab == "tab-2":
-        if time_format == "dhms":
-            work_week_hours_display = f"{work_week_days} days, {hours} hours,{minutes} minutes, {seconds} seconds"
-        elif time_format == "hours":
-            work_week_hours_display = f"{work_week_hours} hours"
-        elif time_format == "minutes":
-            work_week_minutes = work_week_hours * 60
-            work_week_hours_display = f"{work_week_minutes} minutes"
-        elif time_format == "seconds":
-            work_week_seconds = work_week_hours * 60 * 60
-            work_week_hours_display = f"{work_week_seconds} seconds"
-
         content = html.Div([
             html.H2("Work Week Hours Remaining", style={"color": "darkred", "fontSize": "36px"}),
             html.P(work_week_hours_display, style={"fontSize": "24px"}),
